@@ -76,7 +76,7 @@ def to_file(fields, rows, geometries, filepath, encoding="utf8", maxprecision=12
 
                         # detect nr type
                         if value.is_integer():
-                            _strnr = bytes(value)
+                            _strnr = str(value)
                         else:
                             # get max decimals, capped to max precision
                             _strnr = format(value, ".%sf"%maxprecision).rstrip("0")
@@ -85,7 +85,7 @@ def to_file(fields, rows, geometries, filepath, encoding="utf8", maxprecision=12
                     except ValueError:
                         # but turn to text if any of the cells cannot be made to float bc they are txt
                         fieldtype = "C"
-                        value = value if isinstance(value, str) else bytes(value)
+                        value = value if isinstance(value, str) else str(value)
                         fieldlen = max(( len(value), fieldlen ))
                         
             if fieldtype == "N" and decimals == 0:

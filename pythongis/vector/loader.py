@@ -94,10 +94,10 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
         # txt or csv
         if filetype in ("Text-Delimited","CSV"):
             delimiter = kwargs.get("delimiter")
-            fileobj = open(filepath, "rb")
+            fileobj = open(filepath, newline='', encoding=encoding, errors=encoding_errors)
             # auto detect delimiter
+            # run sniffer, and allow sending all kwargs to overwrite
             # NOTE: only based on first 10 mb, otherwise gets really slow for large files
-            # TODO: run sniffer regardless, and allow sending all kwargs to overwrite
             sniffsize = kwargs.pop('sniffsize', 10)
             dialect = csv.Sniffer().sniff(fileobj.read(1056*sniffsize)) 
             fileobj.seek(0)
@@ -116,7 +116,7 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
                     if string.upper() == "NULL":
                         return None
                     else:
-                        return string.decode(encoding, errors=encoding_errors)
+                        return string
             rows = ([parsestring(cell) for cell in row] for row in rows)
             
             if "skip" in kwargs:
