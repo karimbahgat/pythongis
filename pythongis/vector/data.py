@@ -1192,25 +1192,19 @@ class VectorData:
         """
         # if no preference, try the default
         if type is None:
-            try:
-                self.create_spatial_index(type=DEFAULT_SPATIAL_INDEX, **kwargs)
-            except ImportError:
-                pass
+            type = DEFAULT_SPATIAL_INDEX
 
-        # otherwise try the preferred one
-        else:
-            try:
-                if type == 'rtree':
-                    self.spindex = spindex.Rtree(backend=backend, **kwargs)
-                elif type == 'quadtree':
-                    self.spindex = spindex.QuadTree(backend=backend, bbox=self.bbox, **kwargs)
-                else:
-                    raise Exception('No such spatial index type: {}'.format(type))
-            except ImportError:
-                pass
-
-        # if didn't work, try all and use first one that works
-        if not hasattr(self, 'spindex'):
+        # try the preferred one
+        try:
+            if type == 'rtree':
+                self.spindex = spindex.Rtree(backend=backend, **kwargs)
+            elif type == 'quadtree':
+                self.spindex = spindex.QuadTree(backend=backend, bbox=self.bbox, **kwargs)
+            else:
+                raise Exception('No such spatial index type: {}'.format(type))
+        
+        except ImportError:
+            # if didn't work, try all and use first one that works
             for type in ['rtree','quadtree']:
                 try:
                     if type == 'rtree':

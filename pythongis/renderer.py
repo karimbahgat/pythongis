@@ -2126,14 +2126,19 @@ class ScaleBar:
         #if ratio < 1: ratio = -1/ratio
         #ratio = -ratio
 
-        label = '{:.0f} km'.format(km)
+        unit = 'km'
+        dist = km
+        if dist < 1:
+            dist = 1000
+            unit = 'm'
+        label = '{:.0f} {}'.format(dist, unit)
         labeloptions = {'side':'n', 'padding':0.05}
         boxoptions = {'fillcolor':None, 'outlinecolor':None}
         symboloptions = {'fillwidth':'{}%w'.format(self.options['length']*100),
                         'fillcolor':'black', 'outlinecolor':None,
                         'direction':'e'}
         labeloptions.update(self.options.get('labeloptions', {}))
-        boxoptions.update(self.options.get('boxoptions', {}))
+        boxoptions.update(self.options.get('boxoptions', {})) # not actually used? 
         symboloptions.update(self.options.get('symboloptions', {}))
 
         # render it
