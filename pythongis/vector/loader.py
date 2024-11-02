@@ -208,9 +208,11 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
         rowgeoms = ( (row,geom) for row,geom in rowgeoms if select(dict(zip(fields,row))) )
 
     # load to memory in lists
-    rows,geometries = zip(*rowgeoms)
-    rows = list(rows)
-    geometries = list(geometries)
+    rowgeoms = list(rowgeoms)
+    if rowgeoms:
+        rows,geometries = zip(*rowgeoms)
+    else:
+        rows,geometries = [],[]
 
     return fields, rows, geometries, crs
 
