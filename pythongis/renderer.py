@@ -1801,6 +1801,7 @@ class Legend:
                 else:
                     gradient = layer.styleoptions["gradcolors"]
                 breaks = [ layer.styleoptions["minval"], layer.styleoptions["maxval"] ]
+                del options['minval'], options['maxval'] # remove duplicate min/maxval entries to avoid pyagg error
                 options["length"] = options.get("length", "40%min")
                 options["thickness"] = options.get("thickness", "4%min")
                 options["direction"] = options.get("direction", "e")
