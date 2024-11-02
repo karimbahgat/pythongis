@@ -64,7 +64,7 @@ def to_file(bands, meta, filepath, **kwargs):
         if xscale != yscale:
             raise Exception("When saving to ascii format xscale and yscale must be the same, ie each cell must be a perfect square")
         header += "CELLSIZE %s \n"%xscale
-        header += "NODATA_VALUE %s \n"%meta["nodatavals"][0] # TODO: only temp hack to use nodataval of first band
+        header += "NODATA_VALUE %s \n"%bands[0].nodataval # TODO: only temp hack to use nodataval of first band
 
         # write bands
         filename_root, ext = os.path.splitext(filepath)
@@ -118,10 +118,11 @@ def to_file(bands, meta, filepath, **kwargs):
         tags.tagtype[34264] = 12 #double, only works with PIL patch
 
         # nodata
-        if meta.get("nodatavals"):
-            tags[42113] = str(meta["nodatavals"][0]) # TODO: only temp hack to use nodataval of first band
+        nodataval = bands[0].nodataval # # TODO: only temp hack to use nodataval of first band
+        if nodataval != None:
+            tags[42113] = str(nodataval)
             tags.tagtype[42113] = 2 #ascii dtype
-            
+
         # finally save the file using tiffmeta headers
         img = combine_bands(bands)
         img.save(filepath, tiffinfo=tags, **kwargs)
