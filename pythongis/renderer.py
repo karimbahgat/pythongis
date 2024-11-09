@@ -1256,7 +1256,12 @@ class VectorLayer:
             return x,y
 
         def draw_text(drawer, text, font, options):
-            x,y = drawer.coord2pixel(*options["xy"])
+            xy = options["xy"]
+            if isinstance(xy, str):
+                x,y = xy.split(',')
+            else:
+                x,y = xy
+            x,y = drawer.coord2pixel(x, y)
 
             # offset
             xoffset,yoffset = options.get("xoffset"),options.get("yoffset")
@@ -2060,7 +2065,7 @@ class Title(object):
                             # boxoptions
                             fillcolor='white',
                             outlinecolor='black',
-                            outlinewidth='0.5%min')
+                            ) #outlinewidth='0.1%min')
         self.placement = dict(xy=("50%w","1%h"), anchor="n")
 
     def render(self, map):
@@ -2079,6 +2084,7 @@ class Title(object):
                               outlinecolor=titleoptions.pop('outlinecolor',None),
                               outlinewidth=titleoptions.pop('outlinewidth',None),
                               )
+            boxoptions = {k:v for k,v in boxoptions.items() if v is not None}
             rendered = pyagg.legend.BaseGroup(refcanvas=map.drawer, title=map.title, titleoptions=titleoptions, **boxoptions).render() # pyagg label indeed implements a render method()
 
             # copy front buffer to back buffer
@@ -2103,7 +2109,7 @@ class ScaleBar:
         self.img = None
         self.options = {'length':0.15} # fraction of map width
         self.options.update(options)
-        self.placement = dict(xy=("50%w","98%h"), anchor="s")
+        self.placement = dict(xy="50%w,98%h", anchor="s")
 
     def render(self, map):
         from .vector._helpers import _vincenty_distance
