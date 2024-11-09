@@ -808,7 +808,8 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
 
     # create 1bit image with specified size
     mode = "F" if valuekey else "L"  # L aka 8bit instead of 1, temp fix because in mode 1, actually writes 255
-    img = PIL.Image.new(mode, (raster.width, raster.height), 0)
+    nodataval = -999 if valuekey else 0
+    img = PIL.Image.new(mode, (raster.width, raster.height), nodataval)
     drawer = PIL.ImageDraw.Draw(img)
 
     # drawing procedure
@@ -869,7 +870,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
         burn(val, feat, drawer)
 
     # create raster from the drawn image
-    outband = raster.add_band(img=img, nodataval=None)
+    outband = raster.add_band(img=img, nodataval=nodataval)
 
     # special pixels
     if valuekey:
@@ -1335,8 +1336,8 @@ def crop(raster, bbox, worldcoords=True):
         outrast.add_band(img=img, nodataval=band.nodataval)
 
     # add dataset level mask
-    mask = raster.mask.crop((pxmin,pymin,pxmax,pymax))
-    outrast.mask = mask
+    #mask = raster.mask.crop((pxmin,pymin,pxmax,pymax))
+    #outrast.mask = mask
 
     # update output affine offset based on new upperleft corner
     x1,y1 = raster.cell_to_geo(pxmin,pymin)
