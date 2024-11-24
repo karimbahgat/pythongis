@@ -272,6 +272,20 @@ class Band(object):
         outband.mask = mask
         return outband
 
+    def _roperator(self, other, op): 
+        # same as operator but self is to the right, eg "100 - self"
+        # convert other to band if necessary
+        if isinstance(other, (float,int)):
+            if isinstance(other, int):
+                md = "I"
+            elif isinstance(other, float):
+                md = "F"
+            _oimg = PIL.Image.new(md, (self.width,self.height), other)
+            other = Band(img=_oimg)
+        
+        # apply the operator from the perspective of the other band
+        return other._operator(self, op)
+
     
 
     def __add__(self, other):
@@ -295,22 +309,22 @@ class Band(object):
 
 
     def __radd__(self, other):
-        return other._operator(self, "+")
+        return self._roperator(other, "+")
 
     def __rsub__(self, other):
-        return other._operator(other, "-")
+        return self._roperator(other, "-")
 
     def __rmul__(self, other):
-        return other._operator(other, "*")
+        return self._roperator(other, "*")
 
     def __rdiv__(self, other):
-        return other._operator(self, "/")
+        return self._roperator(other, "/")
 
     def __rtruediv__(self, other):
-        return other._operator(self, "/")
+        return self._roperator(other, "/")
 
     def __rpow__(self, other):
-        return other._operator(self, "**")
+        return self._roperator(other, "**")
 
     
 

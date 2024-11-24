@@ -89,7 +89,7 @@ def to_file(fields, rows, geometries, filepath, encoding="utf8", maxprecision=12
                         fieldlen = max(( len(value), fieldlen ))
                         
             if fieldtype == "N" and decimals == 0:
-                fieldlen -= 2 # bc above we measure lengths for ints as if they were floats, ie with an additional ".0"
+                fieldlen = fieldlen - 2 if fieldlen > 2 else fieldlen # bc above we measure lengths for ints as if they were floats, ie with an additional ".0"
                 func = lambda v: "" if is_missing(v) else int(float(v))
             elif fieldtype == "N" and decimals:
                 func = lambda v: "" if is_missing(v) else float(v)
