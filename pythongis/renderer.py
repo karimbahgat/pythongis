@@ -1203,10 +1203,15 @@ class VectorLayer:
             print("internal",time.time()-t)
 
             # copy results to front buffer
-            if False: #self.transparency:
-                # TODO: need to set alpha somehow... 
-                map.img.paste(drawer.img, None, drawer.img)
+            if self.transparency:
+                # scale existing alpha channel
+                scale = 1 - self.transparency
+                r,g,b,alpha = drawer.img.split()
+                alpha.paste(int(scale * 255), None, alpha) # MAYBE use ImageMath instead? 
+                # paste using scaled alpha channel
+                map.img.paste(drawer.img, None, alpha) # MAYBE should convert drawer.img to RGB? 
             else:
+                # paste using alpha channel of drawing image
                 map.img.paste(drawer.img, None, drawer.img)
 
             # transparency OLD
@@ -1438,10 +1443,15 @@ class VectorLayer:
             print("internal text",time.time()-t)
 
             # copy results to front buffer
-            if False: #self.transparency:
-                # TODO: need to set alpha somehow... 
-                map.img.paste(drawer.img, None, drawer.img)
+            if self.transparency:
+                # scale existing alpha channel
+                scale = 1 - self.transparency
+                r,g,b,alpha = drawer.img.split()
+                alpha.paste(int(scale * 255), None, alpha) # MAYBE use ImageMath instead? 
+                # paste using scaled alpha channel
+                map.img.paste(drawer.img, None, alpha) # MAYBE should convert drawer.img to RGB? 
             else:
+                # paste using alpha channel of drawing image
                 map.img.paste(drawer.img, None, drawer.img)
 
             # transparency OLD
@@ -1698,11 +1708,6 @@ class RasterLayer:
             #fdsfdsf
             img = img.convert("RGBA")
 
-        elif self.styleoptions["type"] == "3d surface":
-            import matplotlib as mpl
-            # ...
-            pass
-
         # make edge and nodata mask transparent
         
         #blank = PIL.Image.new("RGBA", img.size, None)
@@ -1724,20 +1729,22 @@ class RasterLayer:
         
         ###OLDONE: #img.putalpha(PIL.ImageChops.invert(mask.convert("L"))) # putalpha img must be 0 to make it transparent, so the nodata mask must be inverted
         
-        r,g,b,a = img.split()
-        invmask = PIL.ImageChops.invert(mask.convert("L"))
-        newalpha = PIL.ImageMath.eval('min(alpha,invmask)', alpha=a, invmask=invmask).convert('L') # putalpha img must be 0 to make it transparent, so the nodata mask must be inverted
-        img.putalpha(newalpha)
+        # NEW
+        # invert nodata mask to get valid mask where 255 indicates which pixels to copy
+        alpha = PIL.ImageChops.invert(mask.convert("L"))
+        # if transparency, scale valid mask values accordingly
+        if self.transparency:
+            scale = 1 - self.transparency
+            #print(scale)
+            alpha.paste(int(scale * 255), None, alpha) # MAYBE use ImageMath instead? 
+            #alpha.show()
         
         #img.save("postalph.png")
         # ...
 
-        # copy results to front buffer
-        if False: #self.transparency:
-            # TODO: need to set alpha somehow... 
-            map.img.paste(img, None, img)
-        else:
-            map.img.paste(img, None, img)
+        # copy results to front buffer based on alpha mask
+        map.img.paste(img.convert('RGB'), None, alpha)
+        #map.img.show()
 
         # transparency OLD
         # if self.transparency:
