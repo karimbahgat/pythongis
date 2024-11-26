@@ -496,6 +496,26 @@ class Map:
         if not self.drawer: self._create_drawer()
         return list(self.drawer.coordspace_bbox)
 
+    @property
+    def bbox_lonlat(self):
+        bbox = self.bbox
+        tocrs = pycrs.parse.from_proj4('+proj=longlat +datum=WGS84 +ellps=WGS84 +a=6378137.0 +rf=298.257223563 +pm=0 +nodef')
+        if self.crs.to_proj4() != tocrs.to_proj4():
+            # bbox is in projected crs, transform to geographic coords
+            _transform = get_crs_transformer(self.crs, tocrs)
+            if _transform:
+                xmin,ymax,xmax,ymin = bbox
+                bbox = reproject_bbox([xmin,ymin,xmax,ymax], _transform)
+                if bbox:
+                    return bbox
+                else:
+                    raise Exception('Projected bbox could not be reprojected to wgs84, all coordinates were out of bounds (inf or nan)')
+            else:
+                raise Exception(f'Unable to create a transformer from {self.crs.to_proj4()} to {tocrs.to_proj4()}')
+        else:
+            # bbox is already in wgs84
+            return bbox
+
     def zoom_auto(self):
         if not self.drawer: self._create_drawer()
         # zoom
@@ -760,7 +780,7 @@ class LayerGroup:
     def add_layer(self, layer, **options):
         self.changed = True
         
-        if not isinstance(layer, (VectorLayer,RasterLayer)):
+        if not isinstance(layer, (VectorLayer,RasterLayer,TileServerLayer)):
             # if data instance
             if isinstance(layer, VectorData):
                 layer = VectorLayer(layer, **options)
@@ -1732,6 +1752,67 @@ class RasterLayer:
         #     #print a, a.getextrema()
         #     self.img.putalpha(a)
         #     #self.img = PIL.Image.merge('RGBA', [r,g,b,a])
+
+    def render_text(self, map):
+        pass
+
+
+class TileServerLayer:
+    """Tile server layer class."""
+    def __init__(self, url=None, name=None, **kwargs):
+        self.url = url
+        self.name = name or url
+        self.legend = False # should be always false
+
+    def _get_raster(self, width, height, bbox):
+        # IMPORTANT: bbox must be geographic lonlat
+        from . import tiler
+
+        # clip bbox to valid lat long range
+        x1,y1,x2,y2 = bbox
+        xmin,xmax = min(x1, x2), max(x1, x2)
+        ymin,ymax = min(y1, y2), max(y1, y2)
+        xmin,xmax = max(xmin, -180), min(xmax, 180)
+        ymin,ymax = max(ymin, -89.999999), min(ymax, 90)
+        bbox = [xmin,ymin,xmax,ymax]
+
+        # get and merge the tile image data from the tile server
+        zoom = tiler.zoom_for_bbox(bbox, width, height)
+        tiles = tiler.bbox_to_tiles(bbox, zoom)
+        img = tiler.merge_tiles(tiles, self.url)
+        bbox = tiler.tiles_to_bbox(tiles)
+
+        # convert latlon bbox to mercator bbox
+        xmin,ymax,xmax,ymin = bbox
+        xmin,ymin = tiler.lat_lon_to_web_mercator(ymin, xmin)
+        xmax,ymax = tiler.lat_lon_to_web_mercator(ymax, xmax)
+        
+        # create a raster based on the image data
+        crs = '+init=EPSG:3857'
+        #georef = {'bbox':bbox}
+        #georef = {'bbox':(x1,y2,x2,y1)}
+        georef = {'xscale':(xmax-xmin)/(img.size[0]-1), # -1 only to cover gaps
+                    'yscale':-(ymax-ymin)/(img.size[1]-1), # -1 only to cover gaps
+                    'xoffset':xmin,
+                    'yoffset':ymax,
+                    }
+        rast = RasterData(image=img, crs=crs)
+        rast.set_geotransform(**georef)
+        return rast
+    
+    #@property
+    #def bbox(self):
+    #    return self.data.bbox
+
+    def is_empty(self):
+        return False # for now
+
+    def render(self, map): 
+        bbox = map.bbox_lonlat
+        w,h = map.width, map.height
+        rast = self._get_raster(w, h, bbox)
+        rastlyr = RasterLayer(rast, legend=False)
+        rastlyr.render(map)
 
     def render_text(self, map):
         pass
