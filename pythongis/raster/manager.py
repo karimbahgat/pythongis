@@ -1184,17 +1184,24 @@ def crop(raster, bbox, worldcoords=True):
         # already in pixels
         px1,py1,px2,py2 = x1,y1,x2,y2
 
-    # PIL doesnt include the max pixel coords
-    #print raster, px1,py1,px2,py2
-    px2 += 1
-    py2 += 1
-
-    # do bounds check
+    # get extremes
     pxmin = min(px1,px2)
     pymin = min(py1,py2)
     pxmax = max(px1,px2)
     pymax = max(py1,py2)
-    
+
+    # add padding to ensure get edge pixels (maybe not optimal?)
+    #pxmin -= 1
+    #pymin -= 1
+    #pxmax += 1
+    #pymax += 1
+
+    # PIL doesnt include the max pixel coords
+    #print raster, px1,py1,px2,py2
+    pxmax += 1
+    pymax += 1
+
+    # do bounds check
     pxmin = max(0, pxmin)
     pymin = max(0, pymin)
     pxmax = min(raster.width, pxmax)
