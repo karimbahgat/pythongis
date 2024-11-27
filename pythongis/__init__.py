@@ -14,6 +14,7 @@ except:
 from . import raster
 from . import vector
 from . import renderer
+from . import tiler
 
 # Some object imports
 from .vector.data import VectorData

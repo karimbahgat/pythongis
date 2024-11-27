@@ -6,8 +6,25 @@ import os
 import math
 import hashlib
 import tempfile
+import warnings
 
-TILE_CACHE_DIR = os.path.join(tempfile.gettempdir(), 'pythongis_tile_cache')
+TILE_CACHE_DIR = tempfile.gettempdir()
+TILE_CACHE_SUBDIR = 'pythongis_tile_cache'
+
+def clear_tile_cache():
+    folder = os.path.join(TILE_CACHE_DIR, TILE_CACHE_SUBDIR)
+    files = []
+    for fil in os.listdir(folder):
+        if fil.startswith('tile_cache_') and fil.endswith('.png'):
+            files.append(os.path.join(folder, fil))
+    prompt = f'You are about to delete all tile cache files from {folder} ({len(files)} total), eg:\n'
+    prompt += '\n'.join(f'\t{filepath}' for filepath in files[:5])
+    prompt += '\nType "yes" to confirm:\n'
+    if input(prompt).lower() == 'yes':
+        for filepath in files:
+            os.remove(filepath)
+    else:
+        warnings.warn('Clearing of tile cache cancelled, no files deleted')
 
 def lat_lon_to_web_mercator(lat, lon):
     """
@@ -183,7 +200,7 @@ def fetch_tile(x, y, zoom, tile_server):
     #    return Image.new('RGB', (256, 256), (255,0,0)) # red to indicate error
 
 def fetch_tilecache(x, y, z, tile_server):
-    folder = TILE_CACHE_DIR
+    folder = os.path.join(TILE_CACHE_DIR, TILE_CACHE_SUBDIR)
     if not os.path.exists(folder):
         os.mkdir(folder)
     urlhash = hashlib.md5(tile_server.encode('utf8')).hexdigest()

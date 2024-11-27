@@ -46,6 +46,14 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
     filetype = detect_filetype(filepath)
     
     select = kwargs.get("select")
+    select_bbox = kwargs.get("select_bbox")
+    select_bbox_done = False
+
+    if select_bbox:
+        # ensure correct bbox order
+        x1,y1,x2,y2 = select_bbox
+        xmin,ymin,xmax,ymax = min(x1,x2),min(y1,y2),max(x1,x2),max(y1,y2)
+        select_bbox = xmin,ymin,xmax,ymax
 
     def decode(value):
         if isinstance(value, bytes): 
@@ -57,6 +65,7 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
         shapereader = pyshp.Reader(filepath, encoding=encoding, encodingErrors=encoding_errors, **kwargs) # TODO: does pyshp take kwargs?
         
         # load fields, rows, and geometries
+        # and apply bbox filter if given
         fields = [fieldinfo[0] for fieldinfo in shapereader.fields[1:]]
         rows = ( [value for value in record] for record in shapereader.iterRecords() )
         def getgeoj(obj):
@@ -65,8 +74,9 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
             geoj = obj.__geo_interface__
             if hasattr(obj, "bbox"): geoj["bbox"] = list(obj.bbox)
             return geoj
-        geometries = (getgeoj(shape) for shape in shapereader.iterShapes())
+        geometries = (getgeoj(shape) for shape in shapereader.iterShapes(bbox=select_bbox))
         rowgeoms = zip(rows, geometries)
+        select_bbox_done = True
         
         # load projection string from .prj file if exists
         if not crs:
@@ -203,9 +213,31 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
     else:
         raise Exception("Could not create vector data from the given filepath: the filetype extension is either missing or not supported")
 
-    # filter if needed
+    # filter by attributes if needed
     if select:
         rowgeoms = ( (row,geom) for row,geom in rowgeoms if select(dict(zip(fields,row))) )
+
+    # filter by bbox if needed
+    if select_bbox and not select_bbox_done:
+        def bbox_isec(geom):
+            geom_bbox = geom.get('bbox')
+            if geom_bbox:
+                # ensure correct bbox order
+                x1,y1,x2,y2 = geom_bbox
+                xmin,ymin,xmax,ymax = min(x1,x2),min(y1,y2),max(x1,x2),max(y1,y2)
+                geom_bbox = xmin,ymin,xmax,ymax
+                # bbox check
+                if geom_bbox[2] < select_bbox[0] or geom_bbox[3] < select_bbox[1] \
+                or geom_bbox[0] >= select_bbox[2] or geom_bbox[1] >= select_bbox[3]:
+                    return False
+                else:
+                    return True
+                
+            else:
+                # not yet implemented, return all
+                warnings.warn('select_bbox not yet implemented for geometries without precomputed bbox info')
+                return True
+        rowgeoms = ( (row,geom) for row,geom in rowgeoms if bbox_isec(geom) )
 
     # load to memory in lists
     rowgeoms = list(rowgeoms)
