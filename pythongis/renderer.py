@@ -1327,10 +1327,16 @@ class VectorLayer:
             import time
             t=time.time()
 
-            textkey = self.styleoptions["text"]
+            textarg = self.styleoptions["text"]
+            if isinstance(textarg, str):
+                textkey = lambda f: f[textarg]
+            elif hasattr(textarg, '__call__'):
+                textkey = textarg
+            else:
+                raise TypeError(f'text option must be a string or a callable, not {repr(textarg)}')
 
             # get text options (experimental for drawing directly with aggdraw)
-            options = drawer._check_text_options(self.styleoptions["textoptions"])
+            options = drawer._check_text_options(self.styleoptions.get("textoptions", {}))
             options['textcolor'] = tuple([int(round(ch)) for ch in options['textcolor']])
             fontlocation = pyagg.fonthelper.get_fontpath(options["font"])
             import aggdraw
@@ -1368,6 +1374,7 @@ class VectorLayer:
                 fid = id(feat)
                 
                 text = textkey(feat)
+                text = str(text)
                 
                 if text is not None:
 
