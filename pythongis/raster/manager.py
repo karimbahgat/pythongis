@@ -811,6 +811,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
     nodataval = -999 if valuekey else 0
     img = PIL.Image.new(mode, (raster.width, raster.height), nodataval)
     drawer = PIL.ImageDraw.Draw(img)
+    print('init')
 
     # drawing procedure
     def burn(val, feat, drawer):
@@ -863,6 +864,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
             drawer.point(path, fill=val)
 
     # quickly draw all vector data
+    print('burning')
     for feat in vectordata:
         if not feat.geometry:
             continue
@@ -877,13 +879,15 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
         if not stat:
             raise Exception("Valuekey and stat must be set at the same time")
             
-        multimask = PIL.Image.new("1", (raster.width,raster.height))
-        multidrawer = PIL.ImageDraw.Draw(multimask)
+        #multimask = PIL.Image.new("1", (raster.width,raster.height))
+        import numpy as np
+        multimask_arr = np.zeros((raster.height, raster.width), bool)
 
         if not hasattr(vectordata, "spindex"):
             vectordata.create_spatial_index()
 
         # prepare geometries
+        print('prep shapely')
         from shapely.prepared import prep
         for f in vectordata:
             if f.geometry:
@@ -891,29 +895,44 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
                 f._prepped = prep(f._shapely)
 
         # burn all self intersections onto mask (constant time, slower for easy small geoms)
+        print('self-intersections')
+        img1 = PIL.Image.new("1", (raster.width,raster.height))
+        img2 = PIL.Image.new("1", (raster.width,raster.height))
         for f1 in vectordata:
             if not f1.geometry:
                 continue
-            #print ["f1",f1.id,len(vectordata)]
+            print("f1", f1.id, 'of', len(vectordata))
 
             # first burn all maybe feats (ie get their combined union)
-            img2 = PIL.Image.new("1", (raster.width,raster.height))
+            #print('img2')
+            img2.paste(0, (0,0,img2.size[0],img2.size[1])) # reset
             d2 = PIL.ImageDraw.Draw(img2)
             for f2 in vectordata.quick_overlap(f1.bbox):
                 if not f2.geometry:
                     continue
                 if f1 is not f2:
+                    #print('burn2')
                     burn(1, f2, d2)
 
             # if any, then get common raster intersection with main feat
-            if img2.getbbox():
-                img1 = PIL.Image.new("1", (raster.width,raster.height))
+            extrema = img2.getextrema()
+            if extrema[0] != extrema[1]: #img2.getbbox():
+                #print('img1')
+                img1.paste(0, (0,0,img2.size[0],img2.size[1])) # reset
                 d1 = PIL.ImageDraw.Draw(img1)
+                #print('burn1')
                 burn(1, f1, d1)
-                intsec = PIL.ImageMath.eval("convert(img1 & img2, '1')", img1=img1, img2=img2)
-                multimask.paste(1, mask=intsec)
+                #print('img1 & img2 overlap')
+                #intsec = PIL.ImageMath.eval("convert(img1 & img2, '1')", img1=img1, img2=img2)
+                import numpy as np
+                intsec_arr = np.array(img1) & np.array(img2)
+                #intsec = PIL.Image.fromarray(intsec_arr)
+                #print('paste')
+                #multimask.paste(1, mask=intsec)
+                multimask_arr[intsec_arr] = True
 
         # burn the outlines of polygons (border cells may not be overlapping but can still contain multiple choices)
+        print('polygon outlines')
         partialmask = PIL.Image.new("1", (raster.width,raster.height))
         partialdrawer = PIL.ImageDraw.Draw(partialmask)
         for feat in vectordata:
@@ -928,49 +947,99 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
         from time import time
         
         # get which cells to calculate
-        multipix = multimask.load()
-        partialpix = partialmask.load()
+        print('mask load')
+        #multipix = multimask.load()
+        #partialpix = partialmask.load()
+        partialmask_arr = np.array(partialmask)
 
-        for y in range(raster.height):
-            #print "%r of %r"%(y,raster.height)
-            for x in range(raster.width):
-                multicell = multipix[x,y]
-                partialcell = partialpix[x,y]
+        # combine masks and get arr indices
+        anymask_arr = multimask_arr | partialmask_arr
+        anymask_true_y,anymask_true_x = anymask_arr.nonzero()
+        
+        print('slowish cell loop')
+        for i in range(len(anymask_true_x)):
+            #print("%r of %r"%(i,len(anymask_true_x)))
+            #y,x = any_true[0,:], any_true[:,0]
+            x,y = anymask_true_x[i], anymask_true_y[i]
+            multicell = multimask_arr[y,x]
+            partialcell = partialmask_arr[y,x]
 
-                # single values have already been written, now only overwrite multis or partials
-                if multicell or partialcell:
-                    cell = outband.get(x, y)
-                    cellgeom = shape(cell.poly).centroid
+            # single values have already been written, now only overwrite multis or partials
+            if multicell or partialcell:
+                cell = outband.get(x, y)
+                cellgeom = shape(cell.poly).centroid
+                
+                # get features in that cell
+                spindex = list(vectordata.quick_overlap(cellgeom.bounds))
+                intsecs = [feat for feat in spindex
+                            if feat.geometry and feat._prepped.intersects(cellgeom)]
+                if not intsecs:
+                    continue
+
+                # filter or choose multiple feats in a cell
+                if priority and (multicell or partialcell) and len(intsecs) > 1:
+                    intsecs = priority(cellgeom, intsecs)
+
+                # get feature values
+                vals = [valuekey(feat) for feat in intsecs]
+                #print('multi',vals)
+
+                # calculate and apply weight for cells where features are only partially present
+                if partial and partialcell:
+                    vals = [v * partial(cellgeom, feat) for v,feat in zip(vals,intsecs)]
+
+                # aggregate stat if multiple
+                if len(vals) > 1:
+                    value = sql.aggreg(vals, [("val", lambda v: v, stat)])[0]
+                    #print('agg',vals,value)
+                else:
+                    value = vals[0]
+
+                # finally set
+                #print("set","%r of %r"%(y,raster.height),(x,y),len(intsecs),value)
+                outband.set(x, y, value)
+
+        # print('slow cell loop')
+        # for y in range(raster.height):
+        #     print("%r of %r"%(y,raster.height))
+        #     for x in range(raster.width):
+        #         multicell = multipix[x,y]
+        #         partialcell = partialpix[x,y]
+
+        #         # single values have already been written, now only overwrite multis or partials
+        #         if multicell or partialcell:
+        #             cell = outband.get(x, y)
+        #             cellgeom = shape(cell.poly).centroid
                     
-                    # get features in that cell
-                    spindex = list(vectordata.quick_overlap(cellgeom.bounds))
-                    intsecs = [feat for feat in spindex
-                               if feat.geometry and feat._prepped.intersects(cellgeom)]
-                    if not intsecs:
-                        continue
+        #             # get features in that cell
+        #             spindex = list(vectordata.quick_overlap(cellgeom.bounds))
+        #             intsecs = [feat for feat in spindex
+        #                        if feat.geometry and feat._prepped.intersects(cellgeom)]
+        #             if not intsecs:
+        #                 continue
 
-                    # filter or choose multiple feats in a cell
-                    if priority and (multicell or partialcell) and len(intsecs) > 1:
-                        intsecs = priority(cellgeom, intsecs)
+        #             # filter or choose multiple feats in a cell
+        #             if priority and (multicell or partialcell) and len(intsecs) > 1:
+        #                 intsecs = priority(cellgeom, intsecs)
 
-                    # get feature values
-                    vals = [valuekey(feat) for feat in intsecs]
-                    #print('multi',vals)
+        #             # get feature values
+        #             vals = [valuekey(feat) for feat in intsecs]
+        #             #print('multi',vals)
 
-                    # calculate and apply weight for cells where features are only partially present
-                    if partial and partialcell:
-                        vals = [v * partial(cellgeom, feat) for v,feat in zip(vals,intsecs)]
+        #             # calculate and apply weight for cells where features are only partially present
+        #             if partial and partialcell:
+        #                 vals = [v * partial(cellgeom, feat) for v,feat in zip(vals,intsecs)]
 
-                    # aggregate stat if multiple
-                    if len(vals) > 1:
-                        value = sql.aggreg(vals, [("val", lambda v: v, stat)])[0]
-                        #print('agg',vals,value)
-                    else:
-                        value = vals[0]
+        #             # aggregate stat if multiple
+        #             if len(vals) > 1:
+        #                 value = sql.aggreg(vals, [("val", lambda v: v, stat)])[0]
+        #                 #print('agg',vals,value)
+        #             else:
+        #                 value = vals[0]
 
-                    # finally set
-                    #print ["set","%r of %r"%(y,raster.height),(x,y),len(intsecs),value]
-                    outband.set(x, y, value)
+        #             # finally set
+        #             #print("set","%r of %r"%(y,raster.height),(x,y),len(intsecs),value)
+        #             outband.set(x, y, value)
 
     return raster
 
