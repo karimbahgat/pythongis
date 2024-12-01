@@ -624,74 +624,39 @@ class Band(object):
         statsdict = dict()
 
         try:
-            if self.mode.endswith("8"):
-                # PIL.ImageStat only works for modes with values below 255
-
-                # retrieve stats
-                valid = self.mask.point(lambda v: 1 if v==0 else 0)
-                stats = PIL.ImageStat.Stat(self.img, valid)
-                _min,_max = stats.extrema[0]
-
-                if not stattypes or "count" in stattypes:
-                    statsdict["count"] = stats.count[0]
-                if not stattypes or "sum" in stattypes:
-                    statsdict["sum"] = stats.sum[0]
-                if not stattypes or "mean" in stattypes:
-                    try: statsdict["mean"] = stats.mean[0]
-                    except ZeroDivisionError: statsdict["mean"] = None
-                if not stattypes or "min" in stattypes:
-                    statsdict["min"] = _min
-                if not stattypes or "max" in stattypes:
-                    statsdict["max"] = _max
-                # some more stats
-                if not stattypes or "median" in stattypes:
-                    sortedvals = list(sorted(self.img.getcolors(), key=lambda e: e[1]))
-                    statsdict["median"] = sortedvals[len(sortedvals)//2][1]
-                if not stattypes or "majority" in stattypes:
-                    sortedvals = list(sorted(self.img.getcolors(), key=lambda e: e[0]))
-                    statsdict["majority"] = sortedvals[-1][1]
-                if not stattypes or "minority" in stattypes:
-                    sortedvals = list(sorted(self.img.getcolors(), key=lambda e: e[0]))
-                    statsdict["minority"] = sortedvals[0][1]
-
-            elif self.mode.endswith(("16","32","1bit")):
-                # manually get count of all unique pixelvalues and do math on it
-                # but do not include counts of nodataval
-                
-                nodata = self.nodataval
-                valuecounts = [(cnt,val) for cnt,val in self.img.getcolors(self.width*self.height) if val != nodata]
-                
-                def _count():
-                    return sum((cnt for cnt,val in valuecounts)) if valuecounts else 0
-                def _sum():
-                    return sum((cnt*val for cnt,val in valuecounts)) if valuecounts else None
-                def _mean():
-                    return _sum()/float(_count()) if valuecounts else None
-                def _min():
-                    return min((val for cnt,val in valuecounts)) if valuecounts else None
-                def _max():
-                    return max((val for cnt,val in valuecounts)) if valuecounts else None
-                    
-                if not stattypes or "count" in stattypes:
-                    statsdict["count"] = _count()
-                if not stattypes or "sum" in stattypes:
-                    statsdict["sum"] = _sum()
-                if not stattypes or "mean" in stattypes:
-                    statsdict["mean"] = _mean()
-                if not stattypes or "min" in stattypes:
-                    statsdict["min"] = _min()
-                if not stattypes or "max" in stattypes:
-                    statsdict["max"] = _max()
-                # some more stats
-                if not stattypes or "median" in stattypes:
-                    sortedvals = list(sorted(valuecounts, key=lambda e: e[1]))
-                    statsdict["median"] = sortedvals[len(sortedvals)//2][1] if sortedvals else None
-                if not stattypes or "majority" in stattypes:
-                    sortedvals = list(sorted(valuecounts, key=lambda e: e[0]))
-                    statsdict["majority"] = sortedvals[-1][1] if sortedvals else None
-                if not stattypes or "minority" in stattypes:
-                    sortedvals = list(sorted(valuecounts, key=lambda e: e[0]))
-                    statsdict["minority"] = sortedvals[0][1] if sortedvals else None
+            # convert img and mask to numpy arrays
+            import numpy as np
+            img_arr = np.array(self.img)
+            # get flat arr of valid values
+            if self.nodataval is None:
+                values = img_arr.flatten()
+            else:
+                values = img_arr[ img_arr != self.nodataval ]
+            
+            # retrieve stats
+            any_values = len(values) > 0
+            if not stattypes or "count" in stattypes:
+                statsdict['count'] = len(values) if any_values else None
+            if not stattypes or "sum" in stattypes:
+                statsdict["sum"] = float(values.sum()) if any_values else None
+            if not stattypes or "mean" in stattypes:
+                try: statsdict["mean"] = float(values.mean()) if any_values else None
+                except ZeroDivisionError: statsdict["mean"] = None
+            if not stattypes or "min" in stattypes:
+                statsdict["min"] = float(values.min()) if any_values else None
+            if not stattypes or "max" in stattypes:
+                statsdict["max"] = float(values.max()) if any_values else None
+            if not stattypes or "median" in stattypes:
+                statsdict["median"] = float(np.median(values)) if any_values else None
+            # non-default stats (slower, so have to be explicitly requested)
+            if "majority" in stattypes or 'minority' in stattypes:
+                vals,counts = np.unique(values, return_counts=True)
+                if "majority" in stattypes:
+                    i = np.argmax(counts)
+                    statsdict["majority"] = float(vals[i]) if any_values else None
+                if "minority" in stattypes:
+                    i = np.argmin(counts)
+                    statsdict["minority"] = float(vals[i]) if any_values else None
                 
         except MemoryError:
 
@@ -701,6 +666,8 @@ class Band(object):
             # TODO: Doesnt work yet, cus previous ImageStat and getcolors results in load() being called
             # TODO: Right now only works if band has parent raster
             # WARNING: Median here is only median of medians
+
+            warnings.warn('Encountered MemoryError during summarystats, trying a slower tiled approach instead')
 
             import gc
             try:
