@@ -811,7 +811,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
     nodataval = -999 if valuekey else 0
     img = PIL.Image.new(mode, (raster.width, raster.height), nodataval)
     drawer = PIL.ImageDraw.Draw(img)
-    print('init')
+    #logging.debug('init')
 
     # drawing procedure
     def burn(val, feat, drawer):
@@ -864,7 +864,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
             drawer.point(path, fill=val)
 
     # quickly draw all vector data
-    print('burning')
+    #logging.debug('burning')
     for feat in vectordata:
         if not feat.geometry:
             continue
@@ -887,7 +887,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
             vectordata.create_spatial_index()
 
         # prepare geometries
-        print('prep shapely')
+        #logging.debug('prep shapely')
         from shapely.prepared import prep
         for f in vectordata:
             if f.geometry:
@@ -895,13 +895,13 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
                 f._prepped = prep(f._shapely)
 
         # burn all self intersections onto mask (constant time, slower for easy small geoms)
-        print('self-intersections')
+        #logging.debug('self-intersections')
         img1 = PIL.Image.new("1", (raster.width,raster.height))
         img2 = PIL.Image.new("1", (raster.width,raster.height))
         for f1 in vectordata:
             if not f1.geometry:
                 continue
-            print("f1", f1.id, 'of', len(vectordata))
+            #logging.debug("f1", f1.id, 'of', len(vectordata))
 
             # first burn all maybe feats (ie get their combined union)
             #print('img2')
@@ -932,7 +932,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
                 multimask_arr[intsec_arr] = True
 
         # burn the outlines of polygons (border cells may not be overlapping but can still contain multiple choices)
-        print('polygon outlines')
+        #logging.debug('polygon outlines')
         partialmask = PIL.Image.new("1", (raster.width,raster.height))
         partialdrawer = PIL.ImageDraw.Draw(partialmask)
         for feat in vectordata:
@@ -947,7 +947,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
         from time import time
         
         # get which cells to calculate
-        print('mask load')
+        #logging.debug('mask load')
         #multipix = multimask.load()
         #partialpix = partialmask.load()
         partialmask_arr = np.array(partialmask)
@@ -956,7 +956,7 @@ def rasterize(vectordata, valuekey=None, stat=None, priority=None, partial=None,
         anymask_arr = multimask_arr | partialmask_arr
         anymask_true_y,anymask_true_x = anymask_arr.nonzero()
         
-        print('slowish cell loop')
+        #logging.debug('slowish cell loop')
         for i in range(len(anymask_true_x)):
             #print("%r of %r"%(i,len(anymask_true_x)))
             #y,x = any_true[0,:], any_true[:,0]

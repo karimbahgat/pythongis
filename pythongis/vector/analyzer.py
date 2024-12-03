@@ -37,7 +37,13 @@ def spatial_stats(groupbydata, valuedata, fieldmapping=[], keepall=True, subkey=
 
     # loop
     if not hasattr(groupbydata, "spindex"): groupbydata.create_spatial_index()
-    groupfeats = groupbydata if keepall else groupbydata.quick_overlap(valuedata.bbox) # take advantage of spindex if not keeping all
+    if keepall:
+        groupfeats = groupbydata
+    else:
+        if hasattr(valuedata, 'bbox'):
+            groupfeats = groupbydata.quick_overlap(valuedata.bbox) # take advantage of spindex if not keeping all
+        else:
+            groupfeats = groupbydata
 
     if isinstance(valuedata, VectorData):
         # vector in vector
@@ -115,22 +121,46 @@ def spatial_stats(groupbydata, valuedata, fieldmapping=[], keepall=True, subkey=
         # raster in vector
         # TODO: For very large files, something in here produces a crash after returning output even though memory use seems low...
         from .. import raster
-
+        
         for f in groupfeats:
-            #print f
+            #print('spatial stats: processing feat', f.id)
             row = f.row + [None for _ in fieldmapping]
             outfeat = out.add_feature(row, f.geometry)
-            
+
+            # check raster input for valuedata
+            if isinstance(valuedata, raster.data.RasterData):
+                # user provided RasterData
+                rast = valuedata
+            elif hasattr(valuedata, '__call__'):
+                # RasterData is dynamically calculated by provided function
+                rast = valuedata(f)
+                if rast is None:
+                    # means no raster relevant for this feature
+                    continue
+                elif not isinstance(rast, raster.data.RasterData):
+                    # valuedata func returned incorrect value type
+                    raise TypeError(f'When `valuedata` arg is a function it must return a RasterData type or None, \
+                                    not {type(rast)}')
+            else:
+                raise TypeError(f'Valuedata must be either RasterData or a function returning a RasterData, \
+                                not {type(valuedata)}')
+
+            # crop
             try:
-                cropped = raster.manager.crop(valuedata, f.bbox)
+                cropped = raster.manager.crop(rast, f.bbox)
             except:
+                # means no raster relevant for this feature
                 continue
+            del rast
+            #gc.collect()
             
+            # create VectorData from feature
             # TODO: only check overlapping tiles
-            # TODO: how to calc stat on multiple overlapping tiles           
+            # TODO: how to calc stat on multiple overlapping tiles
             fdata = VectorData()
             fdata.add_feature([], f.geometry)
             
+            # clip RasterData to VectorData
             clipped = raster.manager.clip(cropped, fdata)
 
             #import pythongis as pg
@@ -144,12 +174,15 @@ def spatial_stats(groupbydata, valuedata, fieldmapping=[], keepall=True, subkey=
             del cropped
             #gc.collect()
             
+            # compute each stat field on feature by calling summarystat on clipped raster
             for statfield,bandnum,outstat in fieldmapping:
                 stat = clipped.bands[bandnum].summarystats(outstat)[outstat]
                 outfeat[statfield] = stat
 
             del clipped
             #gc.collect()
+        
+        #gc.collect()
 
     return out
 
