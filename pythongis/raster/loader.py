@@ -5,6 +5,16 @@ import sys, os, itertools, operator, warnings
 # import PIL as the image loader
 import PIL.Image
 
+# allow PIL to load large img files
+PIL.Image.MAX_IMAGE_PIXELS = None
+
+# support additional tiff formats
+# https://github.com/python-pillow/Pillow/blob/main/src/PIL/TiffImagePlugin.py
+import PIL.TiffImagePlugin
+PIL.TiffImagePlugin.OPEN_INFO[(b'II', 1, (3,), 1, (64,), ())] = ("F", "F;64F")
+PIL.TiffImagePlugin.OPEN_INFO[(b'MM', 1, (3,), 1, (64,), ())] = ("F", "F;64BF")
+
+# lookups
 file_extensions = {".asc": "ASCII",
                    ".ascii": "ASCII",
                    ".tif": "GeoTIFF",
@@ -22,14 +32,13 @@ file_extensions = {".asc": "ASCII",
                    ".txt": "Cell-Table",
                    }
 
+
 def detect_filetype(filepath):
     for ext in file_extensions.keys():
         if filepath.lower().endswith(ext):
             return file_extensions[ext]
     else:
         return None
-
-
 
 
 def from_file(filepath, crs=None, **georef):

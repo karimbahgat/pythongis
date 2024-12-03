@@ -1171,6 +1171,12 @@ class RasterData(object):
         for band in self.bands:
             yield band
 
+    def __getitem__(self, i):
+        return self.bands[i]
+    
+    def __setitem__(self, i, setvalue):
+        self.bands[i] = setvalue
+
     def __repr__(self):
         return "<Raster data: mode={mode} bands={bands} size={size} bbox={bbox}>".format(mode=self.mode,
                                                                                          bands=len(self),
