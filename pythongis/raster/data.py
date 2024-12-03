@@ -241,12 +241,44 @@ class Band(object):
                         nodataval=self.nodataval)
         return "Band object:\n" + pprint.pformat(metadict, indent=4)
 
-    def _operator(self, other, op): 
+    def _operator(self, other, op, reversed=False): 
         # calculate math
         # basic math + - * / ** %
         # note: logical ops ~ & | ^ makes binary mask and return the pixel value where mask is valid
         # note: relational ops < > == != return only binary mask
         # note: other useful is min() and max(), equiv to (r1 < r2) | r2
+        # import numpy as np
+
+        # self_data = np.array(self.img)
+        # if isinstance(other, Band):
+        #     other_data = np.array(other.img)
+        # else:
+        #     other_data = other # float or int
+        
+        # datas = {"d1": self_data, "d2": other_data}
+        # if reversed:
+        #     result = eval("d2 %s d1" % op, None, datas)
+        # else:
+        #     result = eval("d1 %s d2" % op, None, datas)
+        # del self_data, other_data, datas
+
+        # # should maybe create a combined mask of nullvalues for all rasters
+        # # and filter away those nullcells from math result
+        # # ...
+        # mask = np.array(self.mask)
+        # if isinstance(other, Band):
+        #     mask = mask | np.array(other.mask)
+        # else:
+        #     # other is float or int, only self has a mask
+        #     pass
+
+        # # return result
+        # outband = Band(img=PIL.Image.fromarray(result))
+        # del result
+        # outband.mask = PIL.Image.fromarray(mask)
+        # del mask
+        # return outband
+
         if isinstance(other, (float,int)):
             if isinstance(other, int):
                 md = "I"
@@ -255,7 +287,10 @@ class Band(object):
             _oimg = PIL.Image.new(md, (self.width,self.height), other)
             other = Band(img=_oimg)
         
-        bands = {"b1": self.img, "b2": other.img}
+        if reversed:
+            bands = {"b1": other.img, "b2": self.img}
+        else:
+            bands = {"b1": self.img, "b2": other.img}
         if any((sym in op for sym in "&|^=><!")):
             img = PIL.ImageMath.eval("convert((b1 %s b2)*255, '1')" % op, **bands)
         else:
@@ -274,19 +309,21 @@ class Band(object):
 
     def _roperator(self, other, op): 
         # same as operator but self is to the right, eg "100 - self"
-        # convert other to band if necessary
-        if isinstance(other, (float,int)):
-            if isinstance(other, int):
-                md = "I"
-            elif isinstance(other, float):
-                md = "F"
-            _oimg = PIL.Image.new(md, (self.width,self.height), other)
-            other = Band(img=_oimg)
-        
-        # apply the operator from the perspective of the other band
-        return other._operator(self, op)
+        return self._operator(other, op, reversed=True)
 
-    
+        # # convert other to band if necessary
+        # if isinstance(other, (float,int)):
+        #     if isinstance(other, int):
+        #         md = "I"
+        #     elif isinstance(other, float):
+        #         md = "F"
+        #     _oimg = PIL.Image.new(md, (self.width,self.height), other)
+        #     other = Band(img=_oimg)
+        
+        # # apply the operator from the perspective of the other band
+        # return other._operator(self, op)
+
+
 
     def __add__(self, other):
         return self._operator(other, "+")
@@ -481,6 +518,21 @@ class Band(object):
 
     def _compute(self, expr, condition=None):
         """Internal only"""
+        # import numpy as np
+        # if "val" in expr:
+        #     arr = np.array(self.img)
+        #     result_arr = eval(expr, {}, {"val":arr})
+        #     del arr
+        #     result = PIL.Image.fromarray(result_arr) # img
+        #     del result_arr
+        # else:
+        #     result = eval(expr) # constant value
+        # if condition:
+        #     self.img.paste(result, None, condition)
+        # else:
+        #     self.img.paste(result)
+        # del result
+
         try:
             if "val" in expr:
                 expr = "convert(%s, '%s')" % (expr, self.img.mode)
@@ -494,38 +546,38 @@ class Band(object):
                 self.img.paste(result, (0,0))
         
         except MemoryError:
-            
-            if not self._pixelaccess:
-                self._pixelaccess = self.img.load()
+            raise
+            # if not self._pixelaccess:
+            #     self._pixelaccess = self.img.load()
 
-            # force mode
-            if self.mode.startswith(("int","1bit")):
-                forcetype = int
-            elif self.mode.startswith("float"):
-                forcetype = float
+            # # force mode
+            # if self.mode.startswith(("int","1bit")):
+            #     forcetype = int
+            # elif self.mode.startswith("float"):
+            #     forcetype = float
                                     
-            # force value range
-            if self.mode == "1bit":
-                forcerange = lambda v: min(max(v,0),1)
-            elif self.mode.endswith("8"):
-                forcerange = lambda v: min(max(v,0),255)
-            else:
-                forcerange = lambda v: v
+            # # force value range
+            # if self.mode == "1bit":
+            #     forcerange = lambda v: min(max(v,0),1)
+            # elif self.mode.endswith("8"):
+            #     forcerange = lambda v: min(max(v,0),255)
+            # else:
+            #     forcerange = lambda v: v
 
-            if condition:
-                condpx = condition.load()
-                for y in range(self.width):
-                    for x in range(self.height):
-                        if condpx[x,y]:
-                            val = self._pixelaccess[x,y]
-                            newval = eval(expr, {}, {"val":val})
-                            self._pixelaccess[x,y] = forcetype(forcerange(newval))
-            else:
-                for y in range(self.width):
-                    for x in range(self.height):
-                        val = self._pixelaccess[x,y]
-                        newval = eval(expr, {}, {"val":val})
-                        self._pixelaccess[x,y] = forcetype(forcerange(newval))
+            # if condition:
+            #     condpx = condition.load()
+            #     for y in range(self.width):
+            #         for x in range(self.height):
+            #             if condpx[x,y]:
+            #                 val = self._pixelaccess[x,y]
+            #                 newval = eval(expr, {}, {"val":val})
+            #                 self._pixelaccess[x,y] = forcetype(forcerange(newval))
+            # else:
+            #     for y in range(self.width):
+            #         for x in range(self.height):
+            #             val = self._pixelaccess[x,y]
+            #             newval = eval(expr, {}, {"val":val})
+            #             self._pixelaccess[x,y] = forcetype(forcerange(newval))
 
     def recode(self, condition, newval):
         """Change to a new value for those pixels that meet a condition.
@@ -576,6 +628,14 @@ class Band(object):
     def _conditional(self, condition):
         """Optimized algorithms for testing condition depending on raster type,
         avoids recursion when calling mask"""
+
+        # import numpy as np
+        # arr = np.array(self.img)
+        # result_arr = eval(condition, {}, {"val":arr})
+        # del arr
+        # result = PIL.Image.fromarray(result_arr) # img
+        # del result_arr
+        # return result
         
         try: 
             # note: relational ops < > == != should return only binary mask, but not sure
@@ -586,20 +646,21 @@ class Band(object):
             ####result = PIL.ImageMath.eval("convert(val * 255, '1')", val=result)
 
         except MemoryError:
-            result = PIL.Image.new("1", self.img.size, 0)
-            resultpixels = result.load()
+            raise
+            # result = PIL.Image.new("1", self.img.size, 0)
+            # resultpixels = result.load()
             
-            if not self._pixelaccess:
-                self._pixelaccess = self.img.load()
+            # if not self._pixelaccess:
+            #     self._pixelaccess = self.img.load()
 
-            # Note: eval on many pixels is very slow
-            for y in range(self.width):
-                for x in range(self.height):
-                    val = self._pixelaccess[x,y]
-                    if eval(condition, {}, {"val":val}) != False:
-                        resultpixels[x,y] = 255
-                    else:
-                        resultpixels[x,y] = 0
+            # # Note: eval on many pixels is very slow
+            # for y in range(self.width):
+            #     for x in range(self.height):
+            #         val = self._pixelaccess[x,y]
+            #         if eval(condition, {}, {"val":val}) != False:
+            #             resultpixels[x,y] = 255
+            #         else:
+            #             resultpixels[x,y] = 0
 
         return result
 
