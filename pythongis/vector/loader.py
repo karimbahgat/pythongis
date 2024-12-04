@@ -17,7 +17,7 @@ except:
 
 # import fileformat modules
 import shapefile as pyshp
-import pygeoj
+import json
 
 file_extensions = {".shp": "Shapefile",
                    ".json": "GeoJSON",
@@ -86,17 +86,55 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
 
     # geojson file
     elif filetype == "GeoJSON":
-        geojfile = pygeoj.load(filepath, **kwargs)
+        with open(filepath, 'r', encoding=encoding, errors=encoding_errors, **kwargs) as fobj: # includes encoding args etc
+            geoj = json.load(fobj)
 
-        # load fields, rows, and geometries
-        fields = [decode(field) for field in geojfile.common_attributes]
-        rows = ([decode(feat.properties[field]) for field in fields] for feat in geojfile)
-        geometries = (feat.geometry.__geo_interface__ for feat in geojfile)
+        # some basic validation checks
+        if 'type' not in geoj:
+            raise Exception('Geojson file must contain a "type" attribute')
+        
+        if geoj['type'] == 'FeatureCollection':
+            if 'features' not in geoj:
+                raise Exception('Geojson FeatureCollection must have a "features" attribute')
+            # get fields
+            # geojson features can have different attributes
+            # so need to loop all features to get all attributes
+            # this is ok since data already exists in memory
+            fields = []
+            for feat in geoj['features']:
+                if 'properties' in feat:
+                    for key in feat['properties'].keys():
+                        if key not in fields:
+                            fields.append(key)
+            # get rows
+            rows = ([feat['properties'].get(field, None) for field in fields]
+                    for feat in geoj['features'])
+            # get geometries
+            geometries = [feat['geometry']
+                          for feat in geoj['features']]
+
+        elif geoj['type'] == 'GeometryCollection':
+            if 'geometries' not in geoj:
+                raise Exception('Geojson GeometryCollection must have a "geometries" attribute')
+            # get fields, ie empty list
+            fields = []
+            # get rows, ie empty lists
+            rows = [[] for geom in geoj['geometries']]
+            # get geometries
+            geometries = [geom for geom in geoj['geometries']]
+
+        # zip rows and geoms
         rowgeoms = zip(rows, geometries)
 
         # load crs
         if not crs:
-            crs = geojfile.crs
+            if 'crs' in geoj:
+                # get crs dict as defined in geojson
+                # TOOD: not sure if this will be considered valid by VectorData...
+                crs = geoj['crs']
+            else:
+                # default geojson crs is wgs84
+                crs = 'EPSG:4326'
 
     # table files without geometry
     elif filetype in ("Text-Delimited","CSV","Excel 97","Excel","Stata"):

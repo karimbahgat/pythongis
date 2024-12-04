@@ -57,10 +57,14 @@ def mosaic(rasters, overlaprule="last", nodataval=-99999, **rasterdef):
             
     # process first
     process(firstrast)
+    del firstrast
+    gc.collect()
 
     # then rest
     for rast in rasters:
         process(rast)
+        del rast
+        gc.collect()
     
     return outrast
 
