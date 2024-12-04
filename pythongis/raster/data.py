@@ -534,12 +534,21 @@ class Band(object):
         # del result
 
         try:
+            # imagemath requires int32 or float32, convert to right mode if needed
+            # TODO: still some weirdness when img is not int32 or float32, eg int32
+            # ...probably bc of nonmatches for different types of ints during condition testing
+            if self.mode.startswith('int') and self.mode != 'int32':
+                expr = expr.replace('val', 'int(val)')
+            elif self.mode.startswith('float') and self.mode != 'float32':
+                expr = expr.replace('val', 'float(val)')
+            # execute
             if "val" in expr:
                 expr = "convert(%s, '%s')" % (expr, self.img.mode)
                 result = PIL.ImageMath.eval(expr, val=self.img)
             else:
                 val = eval(expr)
                 result = PIL.Image.new(self.img.mode, self.img.size, val)
+            # only set where condition is true
             if condition:
                 self.img.paste(result, (0,0), condition)
             else:
@@ -637,7 +646,14 @@ class Band(object):
         # del result_arr
         # return result
         
-        try: 
+        try:
+            # imagemath requires int32 or float32, convert to right mode if needed
+            # TODO: still some weirdness when img is not int32 or float32, eg int32
+            # ...probably bc of nonmatches for different types of ints during condition testing
+            if self.mode.startswith('int') and self.mode != 'int32':
+                condition = condition.replace('val', 'int(val)')
+            elif self.mode.startswith('float') and self.mode != 'float32':
+                condition = condition.replace('val', 'float(val)')
             # note: relational ops < > == != should return only binary mask, but not sure
             _condition = "convert((%s)*255, '1')" % condition
             result = PIL.ImageMath.eval(_condition, val=self.img)
@@ -1351,6 +1367,7 @@ class RasterData(object):
         for band in self:
             band.convert(mode)
         self.mode = mode
+        return self # allow chaining
 
     def save(self, filepath, **kwargs):
         """Saves the raster data as a geographic file."""

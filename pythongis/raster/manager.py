@@ -20,7 +20,7 @@ try:
 except:
     basestring = (bytes,str) # PY3
 
-def mosaic(rasters, overlaprule="last", **rasterdef):
+def mosaic(rasters, overlaprule="last", nodataval=-99999, **rasterdef):
     """
     Mosaic rasters covering different areas together into one file.
     All rasters are aligned to the extent and resolution of the first
@@ -39,7 +39,8 @@ def mosaic(rasters, overlaprule="last", **rasterdef):
     outrast = data.RasterData(mode=firstrast.mode, **rasterdef)
     numbands = len(firstrast.bands)
     for _ in range(numbands):
-        outrast.add_band()
+        band = outrast.add_band(nodataval=nodataval)
+        band.compute(f'{nodataval}') # should start with all nd
     
     def process(rast):
         # align to common grid
@@ -50,7 +51,8 @@ def mosaic(rasters, overlaprule="last", **rasterdef):
         # paste
         for i in range(numbands):
             band = rast.bands[i]
-            outrast.bands[i].img.paste(band.img, (px,py)) #, rast.mask)
+            valid = band.conditional(f"val != {band.nodataval}")
+            outrast.bands[i].img.paste(band.img, (px,py), valid.img)
             #outrast.bands[i].img.show()
             
     # process first
