@@ -45,8 +45,8 @@ def from_file(filepath, encoding="utf8", encoding_errors="strict", crs=None, **k
 
     filetype = detect_filetype(filepath)
     
-    select = kwargs.get("select")
-    select_bbox = kwargs.get("select_bbox")
+    select = kwargs.pop("select", None)
+    select_bbox = kwargs.pop("select_bbox", None)
     select_bbox_done = False
 
     if select_bbox:

@@ -1247,7 +1247,7 @@ class VectorData:
         ys = bbox[1],bbox[3]
         bbox = [min(xs),min(ys),max(xs),max(ys)]
         # return generator over results
-        overlaps = set((id for id in self.spindex.intersection(bbox)))
+        overlaps = set((id for id in self.spindex.intersects(bbox)))
         allids = set(self.features.keys())
         disjoint = allids.difference(overlaps)
         return (self[id] for id in disjoint)
