@@ -6,7 +6,7 @@ import math
 
 # import fileformats
 import shapefile as pyshp
-import pygeoj
+import json
 
 # PY3 fix
 try: 
@@ -36,13 +36,12 @@ def to_file(fields, rows, geometries, filepath, encoding="utf8", maxprecision=12
                 # floats are rounded
                 return round(value, maxprecision)
         elif isinstance(value, str):
-            # unicode is custom encoded into bytestring
-            return value.encode(encoding)
+            return value
         elif value is None:
             return value
         else:
             # brute force anything else to string representation
-            return bytes(value)
+            return str(value)
 
     def detect_fieldtypes(fields, rows):
         # TODO: allow other data types such as dates etc...
@@ -82,7 +81,7 @@ def to_file(fields, rows, geometries, filepath, encoding="utf8", maxprecision=12
                             _strnr = format(value, ".%sf"%maxprecision).rstrip("0")
                             decimals = max(( len(_strnr.split(".")[1]), decimals ))
                         fieldlen = max(( len(_strnr), fieldlen ))
-                    except ValueError:
+                    except (ValueError,TypeError):
                         # but turn to text if any of the cells cannot be made to float bc they are txt
                         fieldtype = "C"
                         value = value if isinstance(value, str) else str(value)
@@ -122,7 +121,8 @@ def to_file(fields, rows, geometries, filepath, encoding="utf8", maxprecision=12
 
     # geojson file
     elif filepath.endswith((".geojson",".json")):
-        geojwriter = pygeoj.new()
+        geoj = {'type': 'FeatureCollection', 'features': []}
+        features = geoj['features']
         fieldtypes = detect_fieldtypes(fields,rows)
         for row,geom in zip(rows,geometries):
             # encode row values
@@ -130,40 +130,40 @@ def to_file(fields, rows, geometries, filepath, encoding="utf8", maxprecision=12
             row = (encode(value) for value in row)
             rowdict = dict(zip(fields, row))
             # create and add feature
-            geojwriter.add_feature(properties=rowdict,
-                                   geometry=geom)
+            feat = {'type':'Feature', 'properties':rowdict, 'geometry':geom}
+            features.append(feat)
         # save
-        geojwriter.save(filepath, encoding=encoding)
+        with open(filepath, 'w', encoding=encoding, **kwargs) as fobj:
+            json.dump(geoj, fobj)
 
     # normal table file without geometry
     elif filepath.endswith((".txt",".csv")):
         import csv
         
         # TODO: Add option of saving geoms as strings in separate fields
-        with open(filepath, "wb") as fileobj:
+        with open(filepath, "w", encoding=encoding) as fileobj:
             csvopts = dict()
             csvopts["delimiter"] = kwargs.get("delimiter", ";") # tab is best for automatically opening in excel...
             writer = csv.writer(fileobj, **csvopts)
-            writer.writerow([f.encode(encoding) for f in fields])
+            writer.writerow([f for f in fields])
             for row,geometry in zip(rows, geometries):
                 writer.writerow([encode(val) for val in row])
 
     elif filepath.endswith(".xls"):
         import xlwt
         
-        with open(filepath, "wb") as fileobj:
-            wb = xlwt.Workbook(encoding=encoding) # module takes care of encoding for us
-            sheet = wb.add_sheet("Data")
-            # fields
-            for c,f in enumerate(fields):
-                sheet.write(0, c, f)
-            # rows
-            for r,(row,geometry) in enumerate(zip(rows, geometries)):
-                for c,val in enumerate(row):
-                    # TODO: run val through encode() func, must spit out dates as well
-                    sheet.write(r+1, c, val)
-            # save
-            wb.save(filepath)
+        wb = xlwt.Workbook(encoding=encoding) # module takes care of encoding for us
+        sheet = wb.add_sheet("Data")
+        # fields
+        for c,f in enumerate(fields):
+            sheet.write(0, c, f)
+        # rows
+        for r,(row,geometry) in enumerate(zip(rows, geometries)):
+            for c,val in enumerate(row):
+                val = encode(val)
+                sheet.write(r+1, c, val)
+        # save
+        wb.save(filepath)
             
     else:
         raise Exception("Could not save the vector data to the given filepath: the filetype extension is either missing or not supported")
