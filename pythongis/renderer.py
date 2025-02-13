@@ -239,8 +239,7 @@ class Layout:
 
         # title (these properties affect the actual rendered title after init)
         self.title = title
-        self.titleoptions = dict(textsize="6%w")
-        if titleoptions: self.titleoptions.update(titleoptions)
+        self.titleoptions = titleoptions or {}
         self.foregroundgroup.add_layer(Title())
             
         self.img = self.drawer.get_image()
@@ -279,53 +278,64 @@ class Layout:
 ##        #print self.foreground,self.foreground._layers
 ##        self.foreground.add_layer(decor)
 
-    def render_all(self, columns=None, rows=None, antialias=False, **kwargs):
-        # WARNING: depreceated, old method name
-        self.render(columns, rows, antialias, **kwargs)
-
-    def render(self, columns=None, rows=None, antialias=False, **kwargs):
+    def render(self, columns=None, rows=None, **kwargs):
         # render and draworder in one
         self.drawer.clear()
 
+        # default pasteoptions
+        default_pasteoptions = {'outlinewidth':'0.3%w', 'outlinecolor':'black'}
+
+        # single
         if len(self.maps) == 1:
             mapobj = self.maps[0]
-            mapobj.render_all(antialias=antialias)
-            pasteoptions = mapobj.pasteoptions or dict(bbox=[5,5,95,95]) #dict(xy=("0%w","0%h")) #,"100%w","100%h"))
+            mapobj.render()
+            pasteoptions = default_pasteoptions.copy()
+            pasteoptions.update( mapobj.pasteoptions )
+            pasteoptions.update( kwargs )
+            pasteoptions['bbox'] = pasteoptions.get('bbox', [5,5,95,95]) # percent
             self.drawer.paste(mapobj.img, **pasteoptions)
 
+        # multiple
         elif len(self.maps) > 1:
             # grid all maps without any pasteoptions
             def mapimgs():
                 for mapobj in self.maps:
                     if not mapobj.pasteoptions:
-                        mapobj.render_all(antialias=antialias)
+                        mapobj.render()
                         yield mapobj.img
-            self.drawer.grid_paste(mapimgs(), columns=columns, rows=rows, **kwargs)
+            opts = default_pasteoptions.copy()
+            opts.update( kwargs )
+            self.drawer.grid_paste(mapimgs(), columns=columns, rows=rows, **opts)
             
             # any remaining maps are pasted based on pasteoptions
             for mapobj in self.maps:
                 if mapobj.pasteoptions:
-                    mapobj.render_all(antialias=antialias)
-                    self.drawer.paste(mapobj.img, **mapobj.pasteoptions)
+                    mapobj.render()
+                    opts = default_pasteoptions.copy()
+                    opts.update( mapobj.pasteoptions )
+                    opts.update( kwargs )
+                    self.drawer.paste(mapobj.img, **opts)
 
         # foreground
         for layer in self.foregroundgroup:
-            layer.render()
-            if layer.img:
-                pasteoptions = layer.pasteoptions.copy()
-                if isinstance(layer, Title):
-                    # since title is rendered on separate img then pasted,
-                    # some titleoptions needs to be passed to pasteoptions
-                    # instead of the rendering method
-                    extraargs = dict([(k,self.titleoptions[k]) for k in ["xy","anchor"] if k in self.titleoptions])
-                    pasteoptions.update(extraargs)
-##                elif isinstance(layer, Text):
-##                    # same for text
-##                    extraargs = dict([(k,layer.textoptions[k]) for k in ["xy","anchor"] if k in layer.textoptions])
-##                    pasteoptions.update(extraargs)
-                self.drawer.paste(layer.img, **pasteoptions)
+            layer.render(self)
+#             if layer.img:
+#                 pasteoptions = layer.pasteoptions.copy()
+#                 if isinstance(layer, Title):
+#                     # since title is rendered on separate img then pasted,
+#                     # some titleoptions needs to be passed to pasteoptions
+#                     # instead of the rendering method
+#                     extraargs = dict([(k,self.titleoptions[k]) for k in ["xy","anchor"] if k in self.titleoptions])
+#                     pasteoptions.update(extraargs)
+# ##                elif isinstance(layer, Text):
+# ##                    # same for text
+# ##                    extraargs = dict([(k,layer.textoptions[k]) for k in ["xy","anchor"] if k in layer.textoptions])
+# ##                    pasteoptions.update(extraargs)
+#                 self.drawer.paste(layer.img, **pasteoptions)
             
         self.img = self.drawer.get_image()
+
+        return self # allow chaining
 
     def get_tkimage(self):
         # Special image format needed by Tkinter to display it in the GUI
@@ -333,13 +343,13 @@ class Layout:
 
     def view(self, **kwargs):
         if self.changed:
-            self.render_all(**kwargs)
+            self.render()
             self.changed = False
         self.drawer.view()
 
     def save(self, savepath, **kwargs):
         if self.changed:
-            self.render_all(antialias=True, **kwargs)
+            self.render(**kwargs)
             self.changed = False
         self.drawer.save(savepath)
 
@@ -689,6 +699,8 @@ class Map:
 
         self.changed = False
         self.layers.changed = False
+
+        return self # allow chaining
 
     def get_tkimage(self):
         # Special image format needed by Tkinter to display it in the GUI
@@ -2156,11 +2168,11 @@ class Background(object):
 
 class Title(object):
     def __init__(self):
-        self.options = dict(textsize="3%w", padding=0.3,
+        self.options = dict(textsize="1%min", padding=0.3,
                             # boxoptions
                             fillcolor='white',
                             outlinecolor='black',
-                            ) #outlinewidth='0.1%min')
+                            outlinewidth='0.05%min')
         self.placement = dict(xy=("50%w","1%h"), anchor="n")
 
     def render(self, map):
