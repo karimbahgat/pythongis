@@ -32,9 +32,18 @@ def mosaic(rasters, overlaprule="last", nodataval=-99999, **rasterdef):
     """
     rasters = (rast for rast in rasters)
     firstrast = next(rasters)
+    # determine rasterdef
+    if rasterdef:
+        # userprovided
+        pass
+    else:
+        # use rasterdef of first raster
+        rasterdef = firstrast.rasterdef
+    # set crs to crs of first raster if missing
+    if 'crs' not in rasterdef:
+        rasterdef['crs'] = firstrast.crs
     # use resampling to the same dimensions as the first raster
-    rasterdef = rasterdef or firstrast.rasterdef
-    # TODO: Also set total bbox and dims to combined bboxes...
+    # TODO: Mayyybe set total bbox and dims to combined bboxes...
     # ...
     outrast = data.RasterData(mode=firstrast.mode, **rasterdef)
     numbands = len(firstrast.bands)
@@ -1513,15 +1522,13 @@ def clip(raster, clipdata, bbox=None, bandnum=0):
     if bbox:
         raster = crop(raster, bbox)
 
-    # determine georef of out raster, defaults to that of the main raster
-    georef = {"width":raster.width, "height":raster.height,
-              "affine":raster.affine}
-    outrast = data.RasterData(mode=raster.mode, **georef)
+    # create out raster based on the main raster
+    outrast = data.RasterData(mode=raster.mode, **raster.rasterdef)
 
     # get band of valid areas
     if isinstance(clipdata, VectorData):
         # rasterize vector data
-        valid = rasterize(clipdata, **georef).bands[0]
+        valid = rasterize(clipdata, **raster.rasterdef).bands[0]
         valid = valid.conditional("val > 0") # necessary bc rasterize returns 8bit instead of binary
     elif isinstance(clipdata, RasterData):
         # get boolean band where nodatavals

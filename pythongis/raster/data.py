@@ -1216,7 +1216,7 @@ class RasterData(object):
         metadict = dict(width=self.width,
                         height=self.height,
                         affine=self.affine,
-                        #crs=self.crs # needed?
+                        crs=self.crs # needed?
                         )
         return metadict
 
